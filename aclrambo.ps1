@@ -12,7 +12,6 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 
-
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Data
 
@@ -168,6 +167,9 @@ function UpdateDataGridView($dataGridView) {
         $dataGridView.Columns.RemoveAt($colIndex)
         $dataGridView.Columns.Insert($colIndex, $combo)
     }
+    
+    # Figer la première colonne
+    $dataGridView.Columns[0].Frozen = $true
 }
 
 
@@ -296,6 +298,7 @@ $loadMenuItem.Add_Click({
     if ($loadFileDialog.ShowDialog() -eq 'OK') {
         LoadFromFile($loadFileDialog.FileName)
         UpdateDataGridView($dataGridView)
+
     }
 })
 
