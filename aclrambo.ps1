@@ -13,7 +13,6 @@
 
 
 
-
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Data
 
@@ -174,6 +173,64 @@ function UpdateDataGridView($dataGridView) {
 
 
 
+function DisableInheritanceWithoutRemovingExisting($folderPath) {
+    $acl = Get-Acl -Path $folderPath
+    if ($acl.AreAccessRulesProtected -eq $false) {
+        $acl.SetAccessRuleProtection($true, $true)
+        Set-Acl -Path $folderPath -AclObject $acl
+    }
+}
+
+function ClearAllAcls($folderPath) {
+    $acl = Get-Acl -Path $folderPath
+    $acl.SetAccessRuleProtection($true, $false)
+    
+    # Capture des règles à supprimer
+    $rulesToRemove = @($acl.Access)
+    foreach ($rule in $rulesToRemove) {
+        $acl.RemoveAccessRule($rule)
+    }
+    Set-Acl -Path $folderPath -AclObject $acl
+}
+
+function ApplyRightsFromDataGridView($dataGridView) {
+    for ($rowIndex = 0; $rowIndex -lt $dataGridView.Rows.Count; $rowIndex++) {
+        $row = $dataGridView.Rows[$rowIndex]
+        $subFolderName = $row.Cells[0].Value
+        $folderPath = Join-Path $script:currentDirectory $subFolderName
+
+        Write-Host "Traitement du dossier: $folderPath"
+
+        # Désactivez l'héritage pour le dossier actuel
+        DisableInheritanceWithoutRemovingExisting $folderPath
+
+        # Supprimez les ACLs pour le dossier actuel
+        ClearAllAcls $folderPath
+
+        for ($colIndex = 1; $colIndex -lt $row.Cells.Count; $colIndex++) {
+            $account = $dataGridView.Columns[$colIndex].Name
+            $right = $row.Cells[$colIndex].Value
+
+            switch ($right) {
+                "FullControl" { $rights = "FullControl" }
+                "ReadAndExecute" { $rights = "ReadAndExecute" }
+                "Modify" { $rights = "Modify" }
+                default { $rights = $null }
+            }
+
+            if ($rights) {
+                $accessRule = New-Object -TypeName System.Security.AccessControl.FileSystemAccessRule -ArgumentList $account, $rights, "ContainerInherit, ObjectInherit", "None", "Allow"
+                $folderACL = Get-Acl -Path $folderPath
+                $folderACL.AddAccessRule($accessRule)
+                Set-Acl -Path $folderPath -AclObject $folderACL
+            } else {
+                Write-Host "Aucun droit spécifié pour $account. Passer à l'utilisateur suivant."
+            }
+        }
+    }
+}
+
+
 
 
 # GUI
@@ -256,13 +313,31 @@ $fileMenuItem.DropDownItems.Add($saveAsMenuItem)
 $fileMenuItem.DropDownItems.Add($loadMenuItem)  # On ajoute le menu "Charger Sauvegarde" ici
 $fileMenuItem.DropDownItems.Add($exitMenuItem)  # Ajoutez l'option "Quitter" au menu "Fichier"
 
+# Création du menu "Outils"
+$toolsMenuItem = New-Object System.Windows.Forms.ToolStripMenuItem
+$toolsMenuItem.Text = "Outils"
+
+# Création du sous-menu "Appliquer" sous "Outils"
+$applyMenuItem = New-Object System.Windows.Forms.ToolStripMenuItem
+$applyMenuItem.Text = "Appliquer"
+
+# Ajout d'un événement de clic au sous-menu "Appliquer"
+$applyMenuItem.Add_Click({
+    ApplyRightsFromDataGridView $dataGridView
+   
+})
+
+
+# Ajout du sous-menu "Appliquer" au menu "Outils"
+$toolsMenuItem.DropDownItems.Add($applyMenuItem)
+
 # Ajouter fileMenuItem au menuStrip
 $menuStrip.Items.Add($fileMenuItem)
+$menuStrip.Items.Add($toolsMenuItem)
 $form.MainMenuStrip = $menuStrip
 $form.Controls.Add($menuStrip)
 
 $form.ShowDialog()
-
 
 
 
